@@ -1,13 +1,3 @@
-# Sample Hardhat Project
+# Backend Blockchain Project
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
-
-Try running some of the following tasks:
-
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
-```
+This project creates a lottery in which users can enter a certain number of tickets. One random ticket from these would be picked and they will attain the funds everyone else put in. This is the backend portion of the fullstack project.
