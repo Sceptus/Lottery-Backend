@@ -4,9 +4,10 @@ pragma solidity ^0.8.9;
 
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import "@chainlink/contracts/src/v0.8/AutomationCompatible.sol";
 import "hardhat/console.sol";
 
-contract Lottery is VRFConsumerBaseV2 {
+contract Lottery is VRFConsumerBaseV2, AutomationCompatibleInterface {
     address public owner;
 
     uint64 private immutable subscriptionId;
@@ -18,11 +19,17 @@ contract Lottery is VRFConsumerBaseV2 {
     uint16 private constant minimumRequestConfirmations = 3;
     uint32 private constant numWords = 1;
 
-    uint public randomNumber;
-    address[] public entrants;
-    address public latestWinner;
+    uint private randomNumber;
+    address[] private entrants;
+    address[] private uniqueEntrants;
+
+    event lotteryEnd(address indexed winner, uint indexed amount);
 
     mapping(address => uint) public ticketsOwned;
+
+    uint public lotteryDuration = 30;
+    uint private startTimeStamp;
+    bool private lotteryEnabled;
 
     VRFCoordinatorV2Interface private immutable coordinator;
 
@@ -35,6 +42,8 @@ contract Lottery is VRFConsumerBaseV2 {
         coordinator = VRFCoordinatorV2Interface(vrfCoordinator);
         subscriptionId = subId;
         owner = msg.sender;
+
+        startTimeStamp = block.timestamp;
     }
 
     function buyTicket() public payable {
@@ -42,12 +51,24 @@ contract Lottery is VRFConsumerBaseV2 {
 
         ticketsOwned[msg.sender] += numTickets;
 
+        bool uniqueEntrant = true;
+        for (uint i = 0; i < uniqueEntrants.length; i++) {
+            if (msg.sender == uniqueEntrants[i]) {
+                uniqueEntrant = false;
+            }
+        }
+
+        if (uniqueEntrant) {
+            uniqueEntrants.push(msg.sender);
+        }
+
         for (uint i = 0; i < numTickets; i++) {
             entrants.push(msg.sender);
         }
     }
 
     function endLottery() public onlyOwner {
+        require(uniqueEntrants.length > 2, "Not enough entrants");
         coordinator.requestRandomWords(
             keyHash,
             subscriptionId,
@@ -63,8 +84,11 @@ contract Lottery is VRFConsumerBaseV2 {
     ) internal override {
         randomNumber = randomWords[0] % entrants.length;
 
-        latestWinner = entrants[randomNumber];
-        payable(latestWinner).transfer(address(this).balance);
+        address winner = entrants[randomNumber];
+        uint amount = address(this).balance;
+
+        payable(winner).transfer(address(this).balance);
+        emit lotteryEnd(winner, amount);
 
         for (uint i = 0; i < entrants.length; i++) {
             delete ticketsOwned[entrants[i]];
@@ -83,5 +107,49 @@ contract Lottery is VRFConsumerBaseV2 {
 
     function getBalance() public view returns (uint) {
         return address(this).balance;
+    }
+
+    function getTotalTickets() public view returns (uint) {
+        return entrants.length;
+    }
+
+    function changeOwner(address newOwner) public onlyOwner {
+        owner = newOwner;
+    }
+
+    function endLotteryIn(uint duration) public onlyOwner {
+        startTimeStamp = block.timestamp;
+        lotteryDuration = duration;
+        lotteryEnabled = true;
+    }
+
+    function checkUpkeep(
+        bytes calldata /* checkData */
+    )
+        external
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory /* performData */)
+    {
+        upkeepNeeded =
+            ((block.timestamp - startTimeStamp) > lotteryDuration) &&
+            lotteryEnabled;
+    }
+
+    function performUpkeep(bytes calldata /* performData */) external override {
+        if (
+            ((block.timestamp - startTimeStamp) > lotteryDuration) &&
+            lotteryEnabled
+        ) {
+            coordinator.requestRandomWords(
+                keyHash,
+                subscriptionId,
+                minimumRequestConfirmations,
+                callbackGasLimit,
+                numWords
+            );
+
+            lotteryEnabled = false;
+        }
     }
 }
