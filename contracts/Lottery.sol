@@ -29,7 +29,7 @@ contract Lottery is VRFConsumerBaseV2, AutomationCompatibleInterface {
 
     uint public lotteryDuration = 30;
     uint private startTimeStamp;
-    bool private lotteryEnabled;
+    bool public lotteryEnabled;
 
     VRFCoordinatorV2Interface private immutable coordinator;
 
@@ -150,6 +150,18 @@ contract Lottery is VRFConsumerBaseV2, AutomationCompatibleInterface {
             );
 
             lotteryEnabled = false;
+            startTimeStamp = block.timestamp;
         }
+    }
+
+    function getTimeLeft() public view returns (int) {
+        int timeLeft = int(lotteryDuration) -
+            (int(block.timestamp) - int(startTimeStamp));
+
+        if (timeLeft < 0) {
+            timeLeft = 0;
+        }
+
+        return timeLeft;
     }
 }
